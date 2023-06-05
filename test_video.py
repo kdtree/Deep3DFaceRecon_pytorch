@@ -6,7 +6,7 @@ Test for video
 import os
 import time
 from options.test_video_options import TestVideoOptions
-from data import create_dataset
+# from data import create_dataset
 from models import create_model
 from util.visualizer import MyVisualizer
 from util.preprocess import align_img
@@ -14,8 +14,8 @@ from PIL import Image
 import numpy as np
 from util.load_mats import load_lm3d
 import torch 
-from data.flist_dataset import default_flist_reader
-from scipy.io import loadmat, savemat
+# from data.flist_dataset import default_flist_reader
+# from scipy.io import loadmat, savemat
 import cv2
 from openface_utls import OpenFaceCSVReader
 
@@ -27,6 +27,8 @@ def read_video_frames(video_path):
         ret, frame = cap.read()
         if not ret:
             break
+        # convert to RGB
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         frames.append(frame)
     cap.release()
     return frames
@@ -65,7 +67,7 @@ def run_instance(
     model.device = device
     model.parallelize()
     model.eval()
-    # visualizer = MyVisualizer(opt)
+    visualizer = MyVisualizer(opt)
     lm3d_std = load_lm3d(opt.bfm_folder)
     for file_name in file_name_list:
         print('Processing ', file_name)
@@ -75,28 +77,47 @@ def run_instance(
         n_frames = len(frames)
         f_width = frames[0].shape[1]
         f_height = frames[0].shape[0]
-
+        id_list = []
+        exp_list = []
+        tex_list = []
+        angle_list = []
+        gamma_list = []
+        trans_list = []
+        res_coeff_dict = {}
+        output_file_dir = os.path.join(output_dir, file_name)
+        os.makedirs(output_file_dir, exist_ok=True)
         for i in range(n_frames):
             # print('processing frame ', i)
             lm = lm2d_5pts[i]
             lm[:, -1] = f_height - 1 - lm[:, -1]
             _, im, lm, _ = align_img(Image.fromarray(frames[i]), lm, lm3d_std)
-            im_tensor = torch.tensor(np.array(im)/255., dtype=torch.float32).permute(2, 0, 1).unsqueeze(0)
+            im_tensor = torch.tensor(
+                np.array(im)/255., dtype=torch.float32).permute(2, 0, 1).unsqueeze(0)
             lm_tensor = torch.tensor(lm).unsqueeze(0)
             data = {
                 'imgs': im_tensor,
                 'lms': lm_tensor
             }
             model.set_input(data)  # unpack data from data loader
-            model.test_no_render()           # run inference
-            # visuals = model.get_current_visuals()  # get image results
-            # visualizer.display_current_results(visuals, 0, opt.epoch, dataset=file_name, 
-            #     save_results=True, count=i, name=f'{i:08d}', add_image=False)
+            if i % 100 == 0:
+                model.test()
+                visuals = model.get_current_visuals()  # get image results
+                visualizer.display_current_results(visuals, 0, opt.epoch, dataset=file_name, 
+                save_results=True, count=i, name=f'{i:08d}', add_image=False,
+                save_path_override=output_file_dir)
+            else:
+                model.test_no_render()
 
-            # model.save_mesh(os.path.join(visualizer.img_dir, file_name, 'epoch_%s_%06d'%(opt.epoch, 0),f'{i:08d}'+'.obj')) # save reconstruction meshes
-            output_file_dir = os.path.join(output_dir, file_name, 'epoch_%s_%06d'%(opt.epoch, 0))
-            os.makedirs(output_file_dir, exist_ok=True)
-            model.save_coeff(os.path.join(output_dir, file_name, 'epoch_%s_%06d'%(opt.epoch, 0),f'{i:08d}'+'.mat')) # save predicted coefficients
+            coeff_dict = model.get_coeff_np()
+            for key in coeff_dict:
+                if key not in res_coeff_dict:
+                    res_coeff_dict[key] = []
+                res_coeff_dict[key].append(coeff_dict[key])
+        
+        for key in res_coeff_dict:
+            res_coeff_dict[key] = np.concatenate(res_coeff_dict[key], axis=0)
+            np.save(os.path.join(output_file_dir, f'{key}.npy'), res_coeff_dict[key])
+
         t1 = time.time()
         print('processing time: ', t1 -t0)
 

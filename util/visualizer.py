@@ -172,7 +172,7 @@ class MyVisualizer:
 
 
     def display_current_results(self, visuals, total_iters, epoch, dataset='train', save_results=False, count=0, name=None,
-            add_image=True):
+            add_image=True, save_path_override=None):
         """Display current results on tensorboad; save current results to an HTML file.
 
         Parameters:
@@ -192,6 +192,8 @@ class MyVisualizer:
 
                 if save_results:
                     save_path = os.path.join(self.img_dir, dataset, 'epoch_%s_%06d'%(epoch, total_iters))
+                    if save_path_override is not None:
+                        save_path = save_path_override
                     if not os.path.isdir(save_path):
                         os.makedirs(save_path)
 
