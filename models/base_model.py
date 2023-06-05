@@ -82,6 +82,10 @@ class BaseModel(ABC):
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
         pass
+    @abstractmethod
+    def forward_no_render(self):
+        """Run forward_no_render pass."""
+        pass
 
     @abstractmethod
     def optimize_parameters(self):
@@ -161,6 +165,12 @@ class BaseModel(ABC):
         with torch.no_grad():
             self.forward()
             self.compute_visuals()
+    
+    def test_no_render(self):
+        """Forward function used in test time.
+        """
+        with torch.no_grad():
+            self.forward_no_render()
 
     def compute_visuals(self):
         """Calculate additional output images for visdom and HTML visualization"""

@@ -141,6 +141,9 @@ class FaceReconModel(BaseModel):
         
         self.pred_coeffs_dict = self.facemodel.split_coeff(output_coeff)
 
+    def forward_no_render(self):
+        output_coeff = self.net_recon(self.input_img)
+        self.pred_coeffs_dict = self.facemodel.split_coeff(output_coeff)
 
     def compute_losses(self):
         """Calculate losses, gradients, and update network weights; called in every training iteration"""
@@ -219,9 +222,9 @@ class FaceReconModel(BaseModel):
     def save_coeff(self,name):
 
         pred_coeffs = {key:self.pred_coeffs_dict[key].cpu().numpy() for key in self.pred_coeffs_dict}
-        pred_lm = self.pred_lm.cpu().numpy()
-        pred_lm = np.stack([pred_lm[:,:,0],self.input_img.shape[2]-1-pred_lm[:,:,1]],axis=2) # transfer to image coordinate
-        pred_coeffs['lm68'] = pred_lm
+        # pred_lm = self.pred_lm.cpu().numpy()
+        # pred_lm = np.stack([pred_lm[:,:,0],self.input_img.shape[2]-1-pred_lm[:,:,1]],axis=2) # transfer to image coordinate
+        # pred_coeffs['lm68'] = pred_lm
         savemat(name,pred_coeffs)
 
 
