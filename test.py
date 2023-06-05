@@ -70,5 +70,11 @@ def main(rank, opt, name='examples'):
 
 if __name__ == '__main__':
     opt = TestOptions().parse()  # get test options
-    main(0, opt,opt.img_folder)
+    if opt.img_root_folder is not None:
+        for f in os.listdir(opt.img_root_folder):
+            img_folder = os.path.join(opt.img_root_folder, f)
+            if os.path.isdir(img_folder):
+                main(0, opt, os.path.join(opt.img_root_folder, f))
+    else:
+        main(0, opt,opt.img_folder)
     
