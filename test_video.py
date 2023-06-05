@@ -119,7 +119,7 @@ def run_instance(
             np.save(os.path.join(output_file_dir, f'{key}.npy'), res_coeff_dict[key])
 
         t1 = time.time()
-        print('processing time: ', t1 -t0)
+        print('processing time: ', t1 - t0)
 
 if __name__ == '__main__':
     opt = TestVideoOptions().parse()  # get test options
