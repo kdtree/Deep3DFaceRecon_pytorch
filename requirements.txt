@@ -5,3 +5,4 @@ scikit-image==0.21.0
 scipy==1.10.1
 trimesh==3.21.5
 Pillow==9.4.0
+numpy==1.23.5
