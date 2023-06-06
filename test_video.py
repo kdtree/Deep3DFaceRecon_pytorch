@@ -5,20 +5,21 @@ Test for video
 
 import os
 import time
+import torch
+import torch.multiprocessing as mp
+from PIL import Image
+import numpy as np
+import cv2
 from options.test_video_options import TestVideoOptions
 # from data import create_dataset
 from models import create_model
 from util.visualizer import MyVisualizer
 from util.preprocess import align_img
-from PIL import Image
-import numpy as np
 from util.load_mats import load_lm3d
-import torch 
-# from data.flist_dataset import default_flist_reader
-# from scipy.io import loadmat, savemat
-import cv2
 from openface_utls import OpenFaceCSVReader
+# import torch.distributed as dist
 
+# pylint: disable=no-member, invalid-name, unspecified-encoding
 def read_video_frames(video_path):
     """Read video frames."""
     cap = cv2.VideoCapture(video_path)
@@ -53,39 +54,41 @@ def read_video_data_with_openface(
     return frames, lm2d_5pts
 
 def run_instance(
-        rank,
-        opt,
+        process_idx,
+        n_processes,
+        run_opt,
         file_name_list,
         input_video_dir,
         input_openface_dir,
         output_dir):
+    """"run a single instance"""
     os.makedirs(output_dir, exist_ok=True)
-    device = torch.device(rank)
+    n_gpus = torch.cuda.device_count()
+    device = torch.device(process_idx % n_gpus)
+    print('use device:', device)
     torch.cuda.set_device(device)
-    model = create_model(opt)
-    model.setup(opt)
+    model = create_model(run_opt)
+    model.setup(run_opt)
     model.device = device
     model.parallelize()
     model.eval()
-    visualizer = MyVisualizer(opt)
-    lm3d_std = load_lm3d(opt.bfm_folder)
-    for file_name in file_name_list:
+    visualizer = MyVisualizer(run_opt)
+    lm3d_std = load_lm3d(run_opt.bfm_folder)
+    f_list = file_name_list[process_idx::n_processes]
+    for file_name in f_list:
         print('Processing ', file_name)
+        output_file_dir = os.path.join(output_dir, file_name)
+        os.makedirs(output_file_dir, exist_ok=True)
+        if os.path.exists(os.path.join(output_file_dir, 'time.txt')):
+            print(f'{file_name} already processed, skip.')
+            continue
         t0 = time.time()
         frames, lm2d_5pts = read_video_data_with_openface(
             file_name, input_video_dir, input_openface_dir)
         n_frames = len(frames)
-        f_width = frames[0].shape[1]
+        # f_width = frames[0].shape[1]
         f_height = frames[0].shape[0]
-        id_list = []
-        exp_list = []
-        tex_list = []
-        angle_list = []
-        gamma_list = []
-        trans_list = []
         res_coeff_dict = {}
-        output_file_dir = os.path.join(output_dir, file_name)
-        os.makedirs(output_file_dir, exist_ok=True)
         for i in range(n_frames):
             # print('processing frame ', i)
             lm = lm2d_5pts[i]
@@ -99,10 +102,10 @@ def run_instance(
                 'lms': lm_tensor
             }
             model.set_input(data)  # unpack data from data loader
-            if i % 100 == 0:
+            if i % 100 == 0 and os.name != 'nt':
                 model.test()
                 visuals = model.get_current_visuals()  # get image results
-                visualizer.display_current_results(visuals, 0, opt.epoch, dataset=file_name, 
+                visualizer.display_current_results(visuals, 0, run_opt.epoch, dataset=file_name,
                 save_results=True, count=i, name=f'{i:08d}', add_image=False,
                 save_path_override=output_file_dir)
             else:
@@ -113,13 +116,17 @@ def run_instance(
                 if key not in res_coeff_dict:
                     res_coeff_dict[key] = []
                 res_coeff_dict[key].append(coeff_dict[key])
-        
+
         for key in res_coeff_dict:
             res_coeff_dict[key] = np.concatenate(res_coeff_dict[key], axis=0)
             np.save(os.path.join(output_file_dir, f'{key}.npy'), res_coeff_dict[key])
 
         t1 = time.time()
         print('processing time: ', t1 - t0)
+        # save timing result to txt (also serve as a guard for incomplete processing)
+        with open(os.path.join(output_file_dir, 'time.txt'), 'w') as f_:
+            f_.write(f'{t1 - t0:.4f}')
+        f_.close()
 
 if __name__ == '__main__':
     opt = TestVideoOptions().parse()  # get test options
@@ -128,7 +135,20 @@ if __name__ == '__main__':
         for f in os.listdir(opt.video_folder):
             if f.endswith('.mp4'):
                 fn_list.append(f[:-4])
-
-        run_instance(0, opt, fn_list, opt.video_folder, opt.openface_folder, opt.output_folder)
-                
-    
+        # to ensure the order of processing
+        fn_list.sort()
+        # Only process the specified sub-part, for multi-machine processing
+        if opt.n_parts > 1:
+            # pylint: disable=invalid-name
+            tot_len = len(fn_list)
+            part_len = (tot_len + opt.n_parts-1) // opt.n_parts
+            start_idx = opt.part_id * part_len
+            end_idx = min((opt.part_id + 1) * part_len, tot_len)
+            fn_list = fn_list[start_idx:end_idx]
+        print("Number of videos to process: ", len(fn_list))
+        # run_instance(0, opt, fn_list, opt.video_folder, opt.openface_folder, opt.output_folder)
+        N_PROCESSES = opt.world_size
+        mp.spawn(run_instance, args=(
+            N_PROCESSES, opt, fn_list, opt.video_folder,
+            opt.openface_folder, opt.output_folder),
+            nprocs=N_PROCESSES, join=True)
