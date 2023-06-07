@@ -44,13 +44,13 @@ def read_video_data_with_openface(
     csv_path = os.path.join(input_openface_dir, file_name + '.csv')
     if not os.path.exists(csv_path) or not os.path.exists(video_path):
         print(f'{file_name} is not available, skip.')
-        return
+        return None, None
     of_csv = OpenFaceCSVReader(csv_path)
     lm2d_5pts = of_csv.get_landmarks2d_5pts()
     frames = read_video_frames(video_path)
     if lm2d_5pts.shape[0] != len(frames):
         print(f'{file_name} has different number of frames, skip.')
-        return
+        return None, None
     return frames, lm2d_5pts
 
 def run_instance(
@@ -79,13 +79,15 @@ def run_instance(
         try:
             print('Processing ', file_name)
             output_file_dir = os.path.join(output_dir, file_name)
-            os.makedirs(output_file_dir, exist_ok=True)
             if os.path.exists(os.path.join(output_file_dir, 'time.txt')):
                 print(f'{file_name} already processed, skip.')
                 continue
             t0 = time.time()
             frames, lm2d_5pts = read_video_data_with_openface(
                 file_name, input_video_dir, input_openface_dir)
+            if frames is None or lm2d_5pts is None:
+                print(f'{file_name} is not available, skip.')
+                continue
             n_frames = len(frames)
             # f_width = frames[0].shape[1]
             f_height = frames[0].shape[0]
@@ -102,6 +104,7 @@ def run_instance(
                     'imgs': im_tensor,
                     'lms': lm_tensor
                 }
+                os.makedirs(output_file_dir, exist_ok=True)
                 model.set_input(data)  # unpack data from data loader
                 if i % 100 == 0 and os.name != 'nt':
                     model.test()
