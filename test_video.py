@@ -46,6 +46,11 @@ def read_video_data_with_openface(
         print(f'{file_name} is not available, skip.')
         return None, None
     of_csv = OpenFaceCSVReader(csv_path)
+    conf_val = of_csv.get_confidence()
+    if np.min(conf_val) < 0.1:
+        # Currently just discard sequence with low confidence frames
+        print(f'{file_name} contains low confidence frames, skip.')
+        return None, None
     lm2d_5pts = of_csv.get_landmarks2d_5pts()
     frames = read_video_frames(video_path)
     if lm2d_5pts.shape[0] != len(frames):
