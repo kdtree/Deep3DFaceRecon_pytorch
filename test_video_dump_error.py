@@ -1,6 +1,6 @@
 """
 This script is the test script for Deep3DFaceRecon_pytorch
-Test for video
+Test for video, only dumps error.txt for temp usage
 """
 
 import os
@@ -84,10 +84,9 @@ def run_instance(
         try:
             print('Processing ', file_name)
             output_file_dir = os.path.join(output_dir, file_name)
-            if os.path.exists(os.path.join(output_file_dir, 'time.txt')):
-                print(f'{file_name} already processed, skip.')
-                continue
-            t0 = time.time()
+            # if os.path.exists(os.path.join(output_file_dir, 'error.txt')):
+            #     print(f'{file_name} already processed, skip.')
+            #     continue
             frames, lm2d_5pts = read_video_data_with_openface(
                 file_name, input_video_dir, input_openface_dir)
             if frames is None or lm2d_5pts is None:
@@ -96,56 +95,32 @@ def run_instance(
             n_frames = len(frames)
             # f_width = frames[0].shape[1]
             f_height = frames[0].shape[0]
-            res_coeff_dict = {}
             errors = []
+            os.makedirs(output_file_dir, exist_ok=True)
             for i in range(n_frames):
-                # print('processing frame ', i)
-                lm = lm2d_5pts[i]
-                lm[:, -1] = f_height - 1 - lm[:, -1]
-                _, im, lm, _ = align_img(Image.fromarray(frames[i]), lm, lm3d_std)
-                im_tensor = torch.tensor(
-                    np.array(im)/255., dtype=torch.float32).permute(2, 0, 1).unsqueeze(0)
-                lm_tensor = torch.tensor(lm).unsqueeze(0)
-                data = {
-                    'imgs': im_tensor,
-                    'lms': lm_tensor
-                }
-                os.makedirs(output_file_dir, exist_ok=True)
-                model.set_input(data)  # unpack data from data loader
                 if i % 30 == 0 and os.name != 'nt': # ~1 sec for 30fps
+                # print('processing frame ', i)
+                    lm = lm2d_5pts[i]
+                    lm[:, -1] = f_height - 1 - lm[:, -1]
+                    _, im, lm, _ = align_img(Image.fromarray(frames[i]), lm, lm3d_std)
+                    im_tensor = torch.tensor(
+                        np.array(im)/255., dtype=torch.float32).permute(2, 0, 1).unsqueeze(0)
+                    lm_tensor = torch.tensor(lm).unsqueeze(0)
+                    data = {
+                        'imgs': im_tensor,
+                        'lms': lm_tensor
+                    }
+                    model.set_input(data)  # unpack data from data loader
                     model.test()
                     color_loss = model.compute_color_loss_for_test()
                     errors.append(color_loss)
-                    # print(color_loss)
-                    if i % 150 == 0: # ~5s for 30fps
-                        visuals = model.get_current_visuals()  # get image results
-                        visualizer.display_current_results(visuals, 0, run_opt.epoch, dataset=file_name,
-                        save_results=True, count=i, name=f'{i:08d}', add_image=False,
-                        save_path_override=output_file_dir)
-                else:
-                    model.test_no_render()
 
-                coeff_dict = model.get_coeff_np()
-                for key in coeff_dict:
-                    if key not in res_coeff_dict:
-                        res_coeff_dict[key] = []
-                    res_coeff_dict[key].append(coeff_dict[key])
-
-            for key in res_coeff_dict:
-                res_coeff_dict[key] = np.concatenate(res_coeff_dict[key], axis=0)
-                np.save(os.path.join(output_file_dir, f'{key}.npy'), res_coeff_dict[key])
             # save error to txt
             avg_error = np.average(errors)
             with open(os.path.join(output_file_dir, 'error.txt'), 'w') as f_:
                 f_.write(f'{avg_error:.6f}')
             f_.close()
             print('average color loss: ', avg_error)
-            t1 = time.time()
-            print('processing time: ', t1 - t0)
-            # save timing result to txt (also serve as a guard for incomplete processing)
-            with open(os.path.join(output_file_dir, 'time.txt'), 'w') as f_:
-                f_.write(f'{t1 - t0:.4f}')
-            f_.close()
         # pylint: disable=bare-except
         except:
             print('error occurred, skip.')

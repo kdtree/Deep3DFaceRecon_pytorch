@@ -145,6 +145,12 @@ class FaceReconModel(BaseModel):
         output_coeff = self.net_recon(self.input_img)
         self.pred_coeffs_dict = self.facemodel.split_coeff(output_coeff)
 
+    def compute_color_loss_for_test(self):
+        with torch.no_grad():
+            color_loss = photo_loss(self.pred_face, self.input_img, self.pred_mask)
+            return color_loss.cpu().numpy()
+
+
     def compute_losses(self):
         """Calculate losses, gradients, and update network weights; called in every training iteration"""
 
