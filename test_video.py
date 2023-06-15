@@ -169,7 +169,7 @@ if __name__ == '__main__':
             fn_list = fn_list[start_idx:end_idx]
         print("Number of videos to process: ", len(fn_list))
         # run_instance(0, opt, fn_list, opt.video_folder, opt.openface_folder, opt.output_folder)
-        N_PROCESSES = 1 # opt.world_size
+        N_PROCESSES = opt.world_size
         mp.spawn(run_instance, args=(
             N_PROCESSES, opt, fn_list, opt.video_folder,
             opt.openface_folder, opt.output_folder),
